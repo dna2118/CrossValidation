@@ -84,3 +84,66 @@ rmse(wiggly_mod, test_df)
 ```
 
     ## [1] 0.289051
+
+## Do this using `modelr`
+
+``` r
+cv_df = 
+  crossv_mc(nonlin_df, 100)
+```
+
+One note about resample…
+
+``` r
+cv_df %>%  pull(train) %>%  .[[1]] %>% as_tibble
+```
+
+    ## # A tibble: 79 x 3
+    ##       id      x       y
+    ##    <int>  <dbl>   <dbl>
+    ##  1     1 0.266   1.11  
+    ##  2     2 0.372   0.764 
+    ##  3     3 0.573   0.358 
+    ##  4     4 0.908  -3.04  
+    ##  5     6 0.898  -1.99  
+    ##  6     7 0.945  -3.27  
+    ##  7     8 0.661  -0.615 
+    ##  8     9 0.629   0.0878
+    ##  9    10 0.0618  0.392 
+    ## 10    11 0.206   1.63  
+    ## # … with 69 more rows
+
+``` r
+cv_df = 
+  cv_df %>%  
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+```
+
+Try fitting the linear model to all of these… (map2 gives you two
+columns)
+
+``` r
+cv_df = 
+  cv_df %>% 
+  mutate(
+    linear_mods = map(train, ~lm(y ~ x, data = .x)),
+    smooth_mods = map(.x = train, ~gam(y ~ s(x), data = .x)),
+    wiggly_mod  = map(train, ~gam(y ~ s(x, k = 30), sp = 10e-6, data = .x)),
+    rmse_lin = map2_dbl(.x = linear_mods, .y = test, ~rmse(.x,.y)),
+    rmse_smo = map2_dbl(.x = smooth_mods, .y = test, ~rmse(.x,.y)),
+    rmse_wig = map2_dbl(.x = wiggly_mod, .y = test, ~rmse(.x,.y)))
+
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+![](Cross_validation_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
